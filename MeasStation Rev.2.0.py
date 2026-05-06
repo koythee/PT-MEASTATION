@@ -295,6 +295,98 @@ def save_job_image(frames_dict, file_path):
     cv2.imwrite(file_path, grid, [cv2.IMWRITE_JPEG_QUALITY, 92])
 
 
+# -------------------------------------------------------
+#  ALIGNMENT ANALYSIS ENGINE
+# -------------------------------------------------------
+def compute_alignment(corners_gaps):
+    """
+    Compute X offset, Y offset, and Rotation from 4-corner gap data.
+
+    Convention (all values in µm):
+      H+ = RIGHT gap   H- = LEFT gap
+      V+ = TOP gap     V- = BOT gap
+
+    X offset  > 0  → circle shifted RIGHT  → move LEFT
+    Y offset  > 0  → circle shifted UP     → move DOWN
+    Rotation  > 0  → TOP tilted RIGHT (clockwise when viewed from front)
+
+    Returns dict with keys:
+      x_offset, y_offset, rotation  (µm)
+      adj_right, adj_bl, adj_br     (µm, how much each adjuster moves)
+      valid                          (bool)
+      details                        (per-corner H/V balance)
+    """
+    required = ["LEFT TOP", "RIGHT TOP", "RIGHT BOT", "LEFT BOT"]
+    # Check all corners have data
+    for c in required:
+        if c not in corners_gaps:
+            return {"valid": False}
+        for key in ["H+", "H-", "V+", "V-"]:
+            if corners_gaps[c].get(key, {}).get("um") is None:
+                return {"valid": False}
+
+    def um(corner, key):
+        return corners_gaps[corner][key]["um"]
+
+    # ── X offset ──────────────────────────────────────
+    # H+ (right gap) large → circle near left side → shifted LEFT
+    # mean(H+) - mean(H-) > 0 → right gap bigger → circle shifted LEFT
+    h_plus_avg  = sum(um(c, "H+") for c in required) / 4
+    h_minus_avg = sum(um(c, "H-") for c in required) / 4
+    # x_offset: positive = circle shifted RIGHT (H- bigger than H+)
+    x_offset = (h_minus_avg - h_plus_avg) / 2
+
+    # ── Y offset ──────────────────────────────────────
+    v_plus_avg  = sum(um(c, "V+") for c in required) / 4
+    v_minus_avg = sum(um(c, "V-") for c in required) / 4
+    # y_offset: positive = circle shifted UP (V- bigger than V+)
+    y_offset = (v_minus_avg - v_plus_avg) / 2
+
+    # ── Rotation ──────────────────────────────────────
+    # Compare H balance (H- - H+) between TOP corners vs BOT corners
+    # If TOP has more H- → circle top leans LEFT → rotate clockwise
+    top_h_balance = ((um("LEFT TOP","H-")  - um("LEFT TOP","H+")) +
+                     (um("RIGHT TOP","H-") - um("RIGHT TOP","H+"))) / 2
+    bot_h_balance = ((um("LEFT BOT","H-")  - um("LEFT BOT","H+")) +
+                     (um("RIGHT BOT","H-") - um("RIGHT BOT","H+"))) / 2
+    # rotation > 0 → top leans LEFT relative to bottom → need CW rotation
+    rotation = (top_h_balance - bot_h_balance) / 2
+
+    # ── Adjuster recommendations ───────────────────────
+    # RIGHT adjuster → X axis only
+    #   positive adj_right = push right adjuster IN = move glass LEFT
+    adj_right = -x_offset   # move opposite to offset
+
+    # BL + BR equal → Y shift
+    #   positive adj_bl/br = raise both = move glass UP
+    adj_y = -y_offset       # move opposite to offset
+
+    # BL vs BR differential → rotation
+    #   rotation > 0 (top leans left) → raise BL, lower BR
+    adj_rot = rotation / 2  # split equally between BL and BR
+
+    adj_bl = adj_y + adj_rot   # positive = raise
+    adj_br = adj_y - adj_rot   # positive = raise
+
+    # ── Per-corner details ─────────────────────────────
+    details = {}
+    for c in required:
+        h_bal = um(c, "H-") - um(c, "H+")   # > 0 → leans left
+        v_bal = um(c, "V-") - um(c, "V+")   # > 0 → leans down
+        details[c] = {"h_balance": h_bal, "v_balance": v_bal}
+
+    return {
+        "valid":      True,
+        "x_offset":   round(x_offset,  2),
+        "y_offset":   round(y_offset,  2),
+        "rotation":   round(rotation,  2),
+        "adj_right":  round(adj_right, 2),
+        "adj_bl":     round(adj_bl,    2),
+        "adj_br":     round(adj_br,    2),
+        "details":    details,
+    }
+
+
 def scan_diagonal(gray, cx, cy, hl, hs, lx, ly, sx, sy, gap):
     """
     Scan along both diagonals of the rectangle through center.
@@ -919,11 +1011,12 @@ class App(tk.Tk):
         self._build_input_panel(left)
         self._build_process_button(left)
 
-        # Right: results 2×2 grid
-        right = tk.Frame(main, bg=BG_DARK, width=480)
+        # Right: results 2×2 grid + analysis panel
+        right = tk.Frame(main, bg=BG_DARK, width=520)
         right.pack(side="right", fill="y", padx=(10, 0))
         right.pack_propagate(False)
         self._build_results_panel(right)
+        self._build_analysis_panel(right)
 
     # ── Camera area ──────────────────────────────────────
     def _build_camera_area(self, parent):
@@ -1092,6 +1185,214 @@ class App(tk.Tk):
         }
         return card
 
+    # ── Analysis Panel ───────────────────────────────────
+    def _build_analysis_panel(self, parent):
+        outer = tk.Frame(parent, bg=BG_DARK)
+        outer.pack(fill="x", pady=(6, 0))
+
+        tk.Label(outer, text="ALIGNMENT ANALYSIS",
+                 bg=BG_DARK, fg=FG_DIM,
+                 font=("Segoe UI", 8, "bold")).pack(anchor="w", pady=(0, 4))
+
+        # ── Diagram + Offsets side by side ────────────────
+        row_top = tk.Frame(outer, bg=BG_DARK)
+        row_top.pack(fill="x")
+
+        # Diagram canvas (square)
+        diag_size = 160
+        self._diag_canvas = tk.Canvas(
+            row_top, width=diag_size, height=diag_size,
+            bg=BG_CARD, highlightthickness=1,
+            highlightbackground="#2a3f5f")
+        self._diag_canvas.pack(side="left", padx=(0, 10))
+        self._draw_diagram_idle()
+
+        # Offset info cards
+        info_col = tk.Frame(row_top, bg=BG_DARK)
+        info_col.pack(side="left", fill="both", expand=True)
+
+        self._offset_vars = {}
+        offset_defs = [
+            ("X OFFSET",  "x_offset",  "← →",  ACCENT),
+            ("Y OFFSET",  "y_offset",  "↑ ↓",  "#c77dff"),
+            ("ROTATION",  "rotation",  "↻ ↺",  ORANGE),
+        ]
+        for label, key, symbol, color in offset_defs:
+            card = tk.Frame(info_col, bg=BG_CARD, pady=4, padx=8)
+            card.pack(fill="x", pady=2)
+            hdr = tk.Frame(card, bg=BG_CARD)
+            hdr.pack(fill="x")
+            tk.Label(hdr, text=symbol, bg=BG_CARD, fg=color,
+                     font=("Segoe UI", 11)).pack(side="left")
+            tk.Label(hdr, text=label, bg=BG_CARD, fg=FG_DIM,
+                     font=("Segoe UI", 7, "bold")).pack(side="left", padx=6)
+            val_var = tk.StringVar(value="—")
+            tk.Label(card, textvariable=val_var,
+                     bg=BG_CARD, fg=color,
+                     font=("Consolas", 13, "bold")).pack(anchor="w")
+            self._offset_vars[key] = val_var
+
+        # ── Adjuster Recommendations ──────────────────────
+        adj_frame = tk.Frame(outer, bg=BG_CARD, pady=8, padx=10)
+        adj_frame.pack(fill="x", pady=(8, 0))
+
+        tk.Label(adj_frame, text="🔧  ADJUSTER RECOMMENDATION",
+                 bg=BG_CARD, fg=FG_DIM,
+                 font=("Segoe UI", 8, "bold")).pack(anchor="w", pady=(0, 6))
+
+        self._adj_vars = {}
+        adj_defs = [
+            ("RIGHT",    "adj_right", ACCENT,   "Horizontal (X)"),
+            ("BOT-LEFT", "adj_bl",    "#c77dff", "Vertical + Rotation"),
+            ("BOT-RIGHT","adj_br",    "#c77dff", "Vertical − Rotation"),
+        ]
+        for adj_name, key, color, subtitle in adj_defs:
+            row = tk.Frame(adj_frame, bg=BG_CARD, pady=3)
+            row.pack(fill="x")
+
+            name_col = tk.Frame(row, bg=BG_CARD, width=90)
+            name_col.pack(side="left")
+            name_col.pack_propagate(False)
+            tk.Label(name_col, text=adj_name, bg=BG_CARD, fg=color,
+                     font=("Segoe UI", 9, "bold")).pack(anchor="w")
+            tk.Label(name_col, text=subtitle, bg=BG_CARD, fg=FG_DIM,
+                     font=("Segoe UI", 6)).pack(anchor="w")
+
+            val_var  = tk.StringVar(value="—")
+            dir_var  = tk.StringVar(value="")
+            tk.Label(row, textvariable=val_var,
+                     bg=BG_CARD, fg=FG_MAIN,
+                     font=("Consolas", 12, "bold"), width=12, anchor="e").pack(side="right")
+            tk.Label(row, textvariable=dir_var,
+                     bg=BG_CARD, fg=color,
+                     font=("Segoe UI", 9, "bold"), width=8, anchor="e").pack(side="right")
+            self._adj_vars[key] = (val_var, dir_var)
+
+    def _draw_diagram_idle(self):
+        c = self._diag_canvas
+        c.delete("all")
+        s = int(c["width"])
+        cx, cy = s // 2, s // 2
+        # Glass outline
+        pad = 20
+        c.create_rectangle(pad, pad, s-pad, s-pad,
+                           outline="#2a3f5f", width=2)
+        # Center cross
+        c.create_line(cx-10, cy, cx+10, cy, fill="#2a3f5f", width=1)
+        c.create_line(cx, cy-10, cx, cy+10, fill="#2a3f5f", width=1)
+        # Circle placeholder
+        r = 28
+        c.create_oval(cx-r, cy-r, cx+r, cy+r,
+                      outline="#2a3f5f", width=2)
+        c.create_text(cx, cy, text="?", fill="#2a3f5f",
+                     font=("Segoe UI", 8))
+
+    def _update_analysis(self, analysis):
+        """Refresh analysis panel with computed alignment data."""
+        if not analysis.get("valid"):
+            for var in self._offset_vars.values():
+                var.set("—")
+            for val_var, dir_var in self._adj_vars.values():
+                val_var.set("—")
+                dir_var.set("")
+            self._draw_diagram_idle()
+            return
+
+        x_off = analysis["x_offset"]
+        y_off = analysis["y_offset"]
+        rot   = analysis["rotation"]
+
+        # Offset labels
+        def fmt_offset(val, pos_dir, neg_dir):
+            if abs(val) < 0.5:
+                return "≈ 0  (centered)"
+            direction = pos_dir if val > 0 else neg_dir
+            return f"{abs(val):.1f} µm  {direction}"
+
+        self._offset_vars["x_offset"].set(fmt_offset(x_off, "→ RIGHT", "← LEFT"))
+        self._offset_vars["y_offset"].set(fmt_offset(y_off, "↑ UP",    "↓ DOWN"))
+        self._offset_vars["rotation"].set(fmt_offset(rot,   "↻ CW",    "↺ CCW"))
+
+        # Adjuster recommendations
+        adj_defs = [
+            ("adj_right", analysis["adj_right"], "IN",  "OUT"),
+            ("adj_bl",    analysis["adj_bl"],    "UP",  "DOWN"),
+            ("adj_br",    analysis["adj_br"],    "UP",  "DOWN"),
+        ]
+        for key, val, pos_lbl, neg_lbl in adj_defs:
+            val_var, dir_var = self._adj_vars[key]
+            if abs(val) < 0.5:
+                val_var.set("No change")
+                dir_var.set("")
+            else:
+                direction = pos_lbl if val > 0 else neg_lbl
+                val_var.set(f"{abs(val):.1f} µm")
+                dir_var.set(f"▲ {direction}" if val > 0 else f"▼ {direction}")
+
+        # Diagram
+        self._draw_diagram_arrow(x_off, y_off, rot)
+
+    def _draw_diagram_arrow(self, x_off, y_off, rotation):
+        """Draw 2D diagram showing circle offset direction."""
+        c = self._diag_canvas
+        c.delete("all")
+        s    = int(c["width"])
+        cx   = s // 2
+        cy   = s // 2
+        pad  = 20
+        r    = 28
+        scale = 1.5   # µm → pixel scale for arrow
+
+        # Glass outline
+        c.create_rectangle(pad, pad, s-pad, s-pad,
+                           outline="#3a4f6f", width=2)
+        # Corner labels
+        for tx, ty, txt in [(pad+4, pad+4, "LT"), (s-pad-4, pad+4, "RT"),
+                             (pad+4, s-pad-4, "LB"), (s-pad-4, s-pad-4, "RB")]:
+            c.create_text(tx, ty, text=txt, fill="#3a4f6f",
+                         font=("Segoe UI", 6), anchor="nw" if ty < cy else "sw")
+
+        # Center crosshair (ideal position)
+        c.create_line(cx-8, cy, cx+8, cy, fill="#3a4f6f", width=1, dash=(2,2))
+        c.create_line(cx, cy-8, cx, cy+8, fill="#3a4f6f", width=1, dash=(2,2))
+
+        # Current circle position (offset from center)
+        # x_off > 0 → circle shifted RIGHT
+        # y_off > 0 → circle shifted UP (canvas y is inverted)
+        circ_x = cx + min(max(x_off * scale, -(s//2 - pad - r - 4)),
+                              s//2 - pad - r - 4)
+        circ_y = cy - min(max(y_off * scale, -(s//2 - pad - r - 4)),
+                              s//2 - pad - r - 4)
+
+        # Draw circle (current position)
+        c.create_oval(circ_x-r, circ_y-r, circ_x+r, circ_y+r,
+                      outline=ACCENT, width=2)
+
+        # Arrow from circle center → ideal center
+        if abs(x_off) > 0.5 or abs(y_off) > 0.5:
+            c.create_line(circ_x, circ_y, cx, cy,
+                         fill=GREEN, width=2,
+                         arrow=tk.LAST, arrowshape=(8, 10, 4))
+
+        # Rotation arc indicator
+        if abs(rotation) > 0.5:
+            rot_color = ORANGE
+            arc_r = r + 8
+            start_angle = 80
+            extent = min(max(rotation * 3, -60), 60)
+            c.create_arc(circ_x-arc_r, circ_y-arc_r,
+                        circ_x+arc_r, circ_y+arc_r,
+                        start=start_angle, extent=extent,
+                        style="arc", outline=rot_color, width=2)
+            rot_lbl = "↻" if rotation > 0 else "↺"
+            c.create_text(circ_x + arc_r + 4, circ_y - arc_r,
+                         text=rot_lbl, fill=rot_color,
+                         font=("Segoe UI", 10, "bold"))
+
+        # Legend
+        c.create_text(cx, s-6, text="● current  → move to center",
+                     fill=FG_DIM, font=("Segoe UI", 6))
+
     # ====================================================
     #  UI STATE REFRESH
     # ====================================================
@@ -1222,6 +1523,7 @@ class App(tk.Tk):
             w["card"].config(highlightbackground="#2a3f5f")
 
         self._info_var.set(f"LOT: {lot}  |  OPT ID: {opt_id}  →  Press PROCESSING to measure corner 1/4")
+        self._update_analysis({"valid": False})
         self._refresh_ui()
 
     def _do_measure(self):
@@ -1289,6 +1591,10 @@ class App(tk.Tk):
         save_job_to_csv(lot, self._opt_id, self._corners_gaps, csv_path)
         save_job_image(self._corners_frames, jpg_path)
 
+        # Compute and display alignment analysis
+        analysis = compute_alignment(self._corners_gaps)
+        self._update_analysis(analysis)
+
         self._info_var.set(f"✅  All 4 corners complete!  Saved → {lot}_{ts}.csv / .jpg")
 
     def _new_job(self):
@@ -1310,6 +1616,7 @@ class App(tk.Tk):
             w["card"].config(highlightbackground="#2a3f5f")
 
         self._info_var.set("Enter LOT and OPT ID, then press PROCESSING")
+        self._update_analysis({"valid": False})
         self._refresh_ui()
 
     # ====================================================
