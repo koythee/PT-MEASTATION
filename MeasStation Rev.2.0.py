@@ -1230,7 +1230,7 @@ class App(tk.Tk):
 
         # ── Adjuster Recommendations ──────────────────────
         adj_frame = tk.Frame(outer, bg=BG_CARD, pady=6, padx=10)
-        adj_frame.pack(fill="x", pady=(6, 0))
+        adj_frame.pack(fill="both", expand=True, pady=(6, 0))
 
         tk.Label(adj_frame, text="🔧  ADJUSTER RECOMMENDATION",
                  bg=BG_CARD, fg=FG_DIM,
