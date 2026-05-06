@@ -1186,84 +1186,82 @@ class App(tk.Tk):
     # ── Analysis Panel ───────────────────────────────────
     def _build_analysis_panel(self, parent):
         outer = tk.Frame(parent, bg=BG_DARK)
-        outer.pack(fill="x", pady=(6, 0))
+        outer.pack(fill="both", expand=True, pady=(6, 0))
 
         tk.Label(outer, text="ALIGNMENT ANALYSIS",
                  bg=BG_DARK, fg=FG_DIM,
-                 font=("Segoe UI", 8, "bold")).pack(anchor="w", pady=(0, 4))
+                 font=("Segoe UI", 8, "bold")).pack(anchor="w", pady=(0, 2))
 
         # ── Diagram + Offsets side by side ────────────────
         row_top = tk.Frame(outer, bg=BG_DARK)
         row_top.pack(fill="x")
 
-        # Diagram canvas (square)
-        diag_size = 160
+        # Diagram canvas — smaller
+        diag_size = 120
         self._diag_canvas = tk.Canvas(
             row_top, width=diag_size, height=diag_size,
             bg=BG_CARD, highlightthickness=1,
             highlightbackground="#2a3f5f")
-        self._diag_canvas.pack(side="left", padx=(0, 10))
+        self._diag_canvas.pack(side="left", padx=(0, 8))
         self._draw_diagram_idle()
 
-        # Offset info cards
+        # Offset info cards — compact single-line layout
         info_col = tk.Frame(row_top, bg=BG_DARK)
         info_col.pack(side="left", fill="both", expand=True)
 
         self._offset_vars = {}
         offset_defs = [
-            ("X OFFSET",  "x_offset",  "← →",  ACCENT),
-            ("Y OFFSET",  "y_offset",  "↑ ↓",  "#c77dff"),
-            ("ROTATION",  "rotation",  "↻ ↺",  ORANGE),
+            ("X OFFSET", "x_offset", "← →", ACCENT),
+            ("Y OFFSET", "y_offset", "↑ ↓", "#c77dff"),
+            ("ROTATION", "rotation", "↻ ↺", ORANGE),
         ]
         for label, key, symbol, color in offset_defs:
-            card = tk.Frame(info_col, bg=BG_CARD, pady=4, padx=8)
+            card = tk.Frame(info_col, bg=BG_CARD, pady=3, padx=6)
             card.pack(fill="x", pady=2)
-            hdr = tk.Frame(card, bg=BG_CARD)
-            hdr.pack(fill="x")
-            tk.Label(hdr, text=symbol, bg=BG_CARD, fg=color,
-                     font=("Segoe UI", 11)).pack(side="left")
-            tk.Label(hdr, text=label, bg=BG_CARD, fg=FG_DIM,
-                     font=("Segoe UI", 7, "bold")).pack(side="left", padx=6)
+            top = tk.Frame(card, bg=BG_CARD)
+            top.pack(fill="x")
+            tk.Label(top, text=f"{symbol}  {label}", bg=BG_CARD, fg=FG_DIM,
+                     font=("Segoe UI", 7, "bold")).pack(side="left")
             val_var = tk.StringVar(value="—")
             tk.Label(card, textvariable=val_var,
                      bg=BG_CARD, fg=color,
-                     font=("Consolas", 13, "bold")).pack(anchor="w")
+                     font=("Consolas", 10, "bold")).pack(anchor="w")
             self._offset_vars[key] = val_var
 
         # ── Adjuster Recommendations ──────────────────────
-        adj_frame = tk.Frame(outer, bg=BG_CARD, pady=8, padx=10)
-        adj_frame.pack(fill="x", pady=(8, 0))
+        adj_frame = tk.Frame(outer, bg=BG_CARD, pady=6, padx=10)
+        adj_frame.pack(fill="x", pady=(6, 0))
 
         tk.Label(adj_frame, text="🔧  ADJUSTER RECOMMENDATION",
                  bg=BG_CARD, fg=FG_DIM,
-                 font=("Segoe UI", 8, "bold")).pack(anchor="w", pady=(0, 6))
+                 font=("Segoe UI", 8, "bold")).pack(anchor="w", pady=(0, 4))
 
         self._adj_vars = {}
         adj_defs = [
-            ("RIGHT",    "adj_right", ACCENT,   "Horizontal (X)"),
-            ("BOT-LEFT", "adj_bl",    "#c77dff", "Vertical + Rotation"),
-            ("BOT-RIGHT","adj_br",    "#c77dff", "Vertical − Rotation"),
+            ("RIGHT",     "adj_right", ACCENT,    "X axis"),
+            ("BOT-LEFT",  "adj_bl",    "#c77dff",  "Y + Rot"),
+            ("BOT-RIGHT", "adj_br",    "#c77dff",  "Y − Rot"),
         ]
         for adj_name, key, color, subtitle in adj_defs:
-            row = tk.Frame(adj_frame, bg=BG_CARD, pady=3)
+            row = tk.Frame(adj_frame, bg=BG_CARD, pady=2)
             row.pack(fill="x")
 
-            name_col = tk.Frame(row, bg=BG_CARD, width=90)
+            name_col = tk.Frame(row, bg=BG_CARD, width=80)
             name_col.pack(side="left")
             name_col.pack_propagate(False)
             tk.Label(name_col, text=adj_name, bg=BG_CARD, fg=color,
-                     font=("Segoe UI", 9, "bold")).pack(anchor="w")
+                     font=("Segoe UI", 8, "bold")).pack(anchor="w")
             tk.Label(name_col, text=subtitle, bg=BG_CARD, fg=FG_DIM,
                      font=("Segoe UI", 6)).pack(anchor="w")
 
-            val_var  = tk.StringVar(value="—")
-            dir_var  = tk.StringVar(value="")
+            val_var = tk.StringVar(value="—")
+            dir_var = tk.StringVar(value="")
             tk.Label(row, textvariable=val_var,
                      bg=BG_CARD, fg=FG_MAIN,
-                     font=("Consolas", 12, "bold"), width=12, anchor="e").pack(side="right")
+                     font=("Consolas", 11, "bold"), width=11, anchor="e").pack(side="right")
             tk.Label(row, textvariable=dir_var,
                      bg=BG_CARD, fg=color,
-                     font=("Segoe UI", 9, "bold"), width=8, anchor="e").pack(side="right")
+                     font=("Segoe UI", 8, "bold"), width=8, anchor="e").pack(side="right")
             self._adj_vars[key] = (val_var, dir_var)
 
     def _draw_diagram_idle(self):
@@ -1271,19 +1269,16 @@ class App(tk.Tk):
         c.delete("all")
         s = int(c["width"])
         cx, cy = s // 2, s // 2
-        # Glass outline
-        pad = 20
+        pad = 14
         c.create_rectangle(pad, pad, s-pad, s-pad,
                            outline="#2a3f5f", width=2)
-        # Center cross
-        c.create_line(cx-10, cy, cx+10, cy, fill="#2a3f5f", width=1)
-        c.create_line(cx, cy-10, cx, cy+10, fill="#2a3f5f", width=1)
-        # Circle placeholder
-        r = 28
+        c.create_line(cx-8, cy, cx+8, cy, fill="#2a3f5f", width=1)
+        c.create_line(cx, cy-8, cx, cy+8, fill="#2a3f5f", width=1)
+        r = 20
         c.create_oval(cx-r, cy-r, cx+r, cy+r,
                       outline="#2a3f5f", width=2)
         c.create_text(cx, cy, text="?", fill="#2a3f5f",
-                     font=("Segoe UI", 8))
+                     font=("Segoe UI", 7))
 
     def _update_analysis(self, analysis):
         """Refresh analysis panel with computed alignment data."""
@@ -1337,59 +1332,52 @@ class App(tk.Tk):
         s    = int(c["width"])
         cx   = s // 2
         cy   = s // 2
-        pad  = 20
-        r    = 28
-        scale = 1.5   # µm → pixel scale for arrow
+        pad  = 14
+        r    = 20
+        scale = 1.0
 
         # Glass outline
         c.create_rectangle(pad, pad, s-pad, s-pad,
                            outline="#3a4f6f", width=2)
         # Corner labels
-        for tx, ty, txt in [(pad+4, pad+4, "LT"), (s-pad-4, pad+4, "RT"),
-                             (pad+4, s-pad-4, "LB"), (s-pad-4, s-pad-4, "RB")]:
+        for tx, ty, txt, anch in [(pad+2, pad+2, "LT", "nw"),
+                                   (s-pad-2, pad+2, "RT", "ne"),
+                                   (pad+2, s-pad-2, "LB", "sw"),
+                                   (s-pad-2, s-pad-2, "RB", "se")]:
             c.create_text(tx, ty, text=txt, fill="#3a4f6f",
-                         font=("Segoe UI", 6), anchor="nw" if ty < cy else "sw")
+                         font=("Segoe UI", 5), anchor=anch)
 
-        # Center crosshair (ideal position)
-        c.create_line(cx-8, cy, cx+8, cy, fill="#3a4f6f", width=1, dash=(2,2))
-        c.create_line(cx, cy-8, cx, cy+8, fill="#3a4f6f", width=1, dash=(2,2))
+        # Center crosshair
+        c.create_line(cx-6, cy, cx+6, cy, fill="#3a4f6f", width=1, dash=(2,2))
+        c.create_line(cx, cy-6, cx, cy+6, fill="#3a4f6f", width=1, dash=(2,2))
 
-        # Current circle position (offset from center)
-        # x_off > 0 → circle shifted RIGHT
-        # y_off > 0 → circle shifted UP (canvas y is inverted)
-        circ_x = cx + min(max(x_off * scale, -(s//2 - pad - r - 4)),
-                              s//2 - pad - r - 4)
-        circ_y = cy - min(max(y_off * scale, -(s//2 - pad - r - 4)),
-                              s//2 - pad - r - 4)
+        # Current circle position
+        max_shift = s // 2 - pad - r - 2
+        circ_x = cx + min(max(x_off * scale, -max_shift), max_shift)
+        circ_y = cy - min(max(y_off * scale, -max_shift), max_shift)
 
-        # Draw circle (current position)
+        # Draw circle
         c.create_oval(circ_x-r, circ_y-r, circ_x+r, circ_y+r,
                       outline=ACCENT, width=2)
 
-        # Arrow from circle center → ideal center
+        # Arrow to ideal center
         if abs(x_off) > 0.5 or abs(y_off) > 0.5:
             c.create_line(circ_x, circ_y, cx, cy,
                          fill=GREEN, width=2,
-                         arrow=tk.LAST, arrowshape=(8, 10, 4))
+                         arrow=tk.LAST, arrowshape=(7, 8, 3))
 
-        # Rotation arc indicator
+        # Rotation arc
         if abs(rotation) > 0.5:
-            rot_color = ORANGE
-            arc_r = r + 8
-            start_angle = 80
-            extent = min(max(rotation * 3, -60), 60)
+            arc_r = r + 6
+            extent = min(max(rotation * 3, -50), 50)
             c.create_arc(circ_x-arc_r, circ_y-arc_r,
                         circ_x+arc_r, circ_y+arc_r,
-                        start=start_angle, extent=extent,
-                        style="arc", outline=rot_color, width=2)
+                        start=80, extent=extent,
+                        style="arc", outline=ORANGE, width=2)
             rot_lbl = "↻" if rotation > 0 else "↺"
-            c.create_text(circ_x + arc_r + 4, circ_y - arc_r,
-                         text=rot_lbl, fill=rot_color,
-                         font=("Segoe UI", 10, "bold"))
-
-        # Legend
-        c.create_text(cx, s-6, text="● current  → move to center",
-                     fill=FG_DIM, font=("Segoe UI", 6))
+            c.create_text(circ_x, circ_y - arc_r - 4,
+                         text=rot_lbl, fill=ORANGE,
+                         font=("Segoe UI", 8, "bold"))
 
     # ====================================================
     #  UI STATE REFRESH
