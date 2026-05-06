@@ -1117,10 +1117,10 @@ class App(tk.Tk):
     def _build_results_panel(self, parent):
         tk.Label(parent, text="MEASUREMENT RESULTS",
                  bg=BG_DARK, fg=FG_DIM,
-                 font=("Segoe UI", 8, "bold")).pack(anchor="w", pady=(2, 4))
+                 font=("Segoe UI", 8, "bold")).pack(anchor="w", pady=(2, 2))
 
         grid = tk.Frame(parent, bg=BG_DARK)
-        grid.pack(fill="both", expand=True)
+        grid.pack(fill="x")
         grid.columnconfigure(0, weight=1)
         grid.columnconfigure(1, weight=1)
         grid.rowconfigure(0, weight=1)
@@ -1137,7 +1137,7 @@ class App(tk.Tk):
         self._corner_widgets = {}
         for corner, (row, col) in positions.items():
             card = self._build_corner_card(grid, corner)
-            card.grid(row=row, column=col, sticky="nsew", padx=4, pady=4)
+            card.grid(row=row, column=col, sticky="nsew", padx=3, pady=3)
 
     def _build_corner_card(self, parent, corner_name):
         color = CORNER_COLORS[corner_name]
@@ -1145,35 +1145,33 @@ class App(tk.Tk):
                         highlightthickness=2, highlightbackground="#2a3f5f")
         card.pack_propagate(True)
 
-        # Header
-        hdr = tk.Frame(card, bg=color, pady=4)
+        # Header — compact
+        hdr = tk.Frame(card, bg=color, pady=2)
         hdr.pack(fill="x")
         tk.Label(hdr, text=corner_name, bg=color, fg="#0d1020",
-                 font=("Segoe UI", 10, "bold")).pack()
+                 font=("Segoe UI", 8, "bold")).pack()
 
-        # Gap rows
+        # Gap rows — compact
         gap_vars = {}
         for gap_label, gap_key in zip(GAP_LABELS, GAP_KEYS):
-            row = tk.Frame(card, bg=BG_CARD, pady=3)
-            row.pack(fill="x", padx=10)
+            row = tk.Frame(card, bg=BG_CARD, pady=1)
+            row.pack(fill="x", padx=6)
 
             tk.Label(row, text=gap_label, bg=BG_CARD, fg=FG_DIM,
-                     font=("Segoe UI", 8), width=12, anchor="w").pack(side="left")
+                     font=("Segoe UI", 7), width=11, anchor="w").pack(side="left")
 
             var = tk.StringVar(value="—")
             val_lbl = tk.Label(row, textvariable=var,
                                bg=BG_CARD, fg=FG_MAIN,
-                               font=("Consolas", 10, "bold"), anchor="e")
+                               font=("Consolas", 8, "bold"), anchor="e")
             val_lbl.pack(side="right")
             gap_vars[gap_key] = (var, val_lbl)
 
-        # Status dot at bottom
-        status_frame = tk.Frame(card, bg=BG_CARD, pady=4)
-        status_frame.pack(fill="x")
+        # Status — single compact line
         status_var = tk.StringVar(value="Waiting...")
-        status_lbl = tk.Label(status_frame, textvariable=status_var,
+        status_lbl = tk.Label(card, textvariable=status_var,
                               bg=BG_CARD, fg=FG_DIM,
-                              font=("Segoe UI", 7, "italic"))
+                              font=("Segoe UI", 6, "italic"), pady=2)
         status_lbl.pack()
 
         self._corner_widgets[corner_name] = {
