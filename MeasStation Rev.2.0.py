@@ -1121,12 +1121,15 @@ class App(tk.Tk):
 
         grid = tk.Frame(parent, bg=BG_DARK)
         grid.pack(fill="x")
-        grid.columnconfigure(0, weight=1)
-        grid.columnconfigure(1, weight=1)
-        grid.rowconfigure(0, weight=1)
-        grid.rowconfigure(1, weight=1)
 
-        # Layout: row0=[LEFT TOP, RIGHT TOP], row1=[LEFT BOT, RIGHT BOT]
+        # Fixed column/row sizes — ไม่ขยับตาม content
+        CARD_W = 240
+        CARD_H = 110
+        grid.columnconfigure(0, minsize=CARD_W, weight=1)
+        grid.columnconfigure(1, minsize=CARD_W, weight=1)
+        grid.rowconfigure(0, minsize=CARD_H)
+        grid.rowconfigure(1, minsize=CARD_H)
+
         positions = {
             "LEFT TOP":  (0, 0),
             "RIGHT TOP": (0, 1),
@@ -1143,15 +1146,18 @@ class App(tk.Tk):
         color = CORNER_COLORS[corner_name]
         card = tk.Frame(parent, bg=BG_CARD, bd=0,
                         highlightthickness=2, highlightbackground="#2a3f5f")
-        card.pack_propagate(True)
+        card.pack_propagate(False)   # ← fixed size ไม่ขยับ
 
-        # Header — compact
+        # Header — แสดง corner name + hint คลิก re-measure
         hdr = tk.Frame(card, bg=color, pady=2)
         hdr.pack(fill="x")
         tk.Label(hdr, text=corner_name, bg=color, fg="#0d1020",
-                 font=("Segoe UI", 8, "bold")).pack()
+                 font=("Segoe UI", 8, "bold")).pack(side="left", padx=6)
+        hint_lbl = tk.Label(hdr, text="", bg=color, fg="#0d1020",
+                            font=("Segoe UI", 6, "italic"))
+        hint_lbl.pack(side="right", padx=4)
 
-        # Gap rows — compact
+        # Gap rows — µm only
         gap_vars = {}
         for gap_label, gap_key in zip(GAP_LABELS, GAP_KEYS):
             row = tk.Frame(card, bg=BG_CARD, pady=1)
@@ -1163,11 +1169,11 @@ class App(tk.Tk):
             var = tk.StringVar(value="—")
             val_lbl = tk.Label(row, textvariable=var,
                                bg=BG_CARD, fg=FG_MAIN,
-                               font=("Consolas", 8, "bold"), anchor="e")
+                               font=("Consolas", 8, "bold"), anchor="e", width=14)
             val_lbl.pack(side="right")
             gap_vars[gap_key] = (var, val_lbl)
 
-        # Status — single compact line
+        # Status
         status_var = tk.StringVar(value="Waiting...")
         status_lbl = tk.Label(card, textvariable=status_var,
                               bg=BG_CARD, fg=FG_DIM,
@@ -1180,7 +1186,16 @@ class App(tk.Tk):
             "status_var": status_var,
             "status_lbl": status_lbl,
             "hdr_color":  color,
+            "hint_lbl":   hint_lbl,
         }
+
+        # Click-to-remeasure binding (ทุก widget ใน card)
+        def _on_click(e, cn=corner_name):
+            self._remeasure_corner(cn)
+
+        for w in [card, hdr, hint_lbl, status_lbl]:
+            w.bind("<Button-1>", _on_click)
+
         return card
 
     # ── Analysis Panel ───────────────────────────────────
@@ -1238,30 +1253,34 @@ class App(tk.Tk):
 
         self._adj_vars = {}
         adj_defs = [
-            ("RIGHT",     "adj_right", ACCENT,    "X axis"),
-            ("BOT-LEFT",  "adj_bl",    "#c77dff",  "Y + Rot"),
-            ("BOT-RIGHT", "adj_br",    "#c77dff",  "Y − Rot"),
+            ("RIGHT",     "adj_right", ACCENT,   "X axis — Horizontal shift"),
+            ("BOT-LEFT",  "adj_bl",    "#c77dff", "Y shift + Rotation"),
+            ("BOT-RIGHT", "adj_br",    "#c77dff", "Y shift − Rotation"),
         ]
         for adj_name, key, color, subtitle in adj_defs:
-            row = tk.Frame(adj_frame, bg=BG_CARD, pady=2)
-            row.pack(fill="x")
+            row = tk.Frame(adj_frame, bg="#1a1d2e", pady=4, padx=8)
+            row.pack(fill="x", pady=2)
 
-            name_col = tk.Frame(row, bg=BG_CARD, width=80)
-            name_col.pack(side="left")
-            name_col.pack_propagate(False)
-            tk.Label(name_col, text=adj_name, bg=BG_CARD, fg=color,
-                     font=("Segoe UI", 8, "bold")).pack(anchor="w")
-            tk.Label(name_col, text=subtitle, bg=BG_CARD, fg=FG_DIM,
-                     font=("Segoe UI", 6)).pack(anchor="w")
+            # Left: name + subtitle
+            left = tk.Frame(row, bg="#1a1d2e")
+            left.pack(side="left", fill="y")
+            tk.Label(left, text=adj_name, bg="#1a1d2e", fg=color,
+                     font=("Segoe UI", 9, "bold"), anchor="w").pack(anchor="w")
+            tk.Label(left, text=subtitle, bg="#1a1d2e", fg=FG_DIM,
+                     font=("Segoe UI", 6), anchor="w").pack(anchor="w")
 
-            val_var = tk.StringVar(value="—")
+            # Right: direction + value stacked
+            right = tk.Frame(row, bg="#1a1d2e")
+            right.pack(side="right")
             dir_var = tk.StringVar(value="")
-            tk.Label(row, textvariable=val_var,
-                     bg=BG_CARD, fg=FG_MAIN,
-                     font=("Consolas", 11, "bold"), width=11, anchor="e").pack(side="right")
-            tk.Label(row, textvariable=dir_var,
-                     bg=BG_CARD, fg=color,
-                     font=("Segoe UI", 8, "bold"), width=8, anchor="e").pack(side="right")
+            tk.Label(right, textvariable=dir_var,
+                     bg="#1a1d2e", fg=color,
+                     font=("Segoe UI", 8, "bold"), anchor="e", width=10).pack(anchor="e")
+            val_var = tk.StringVar(value="—")
+            tk.Label(right, textvariable=val_var,
+                     bg="#1a1d2e", fg=FG_MAIN,
+                     font=("Consolas", 12, "bold"), anchor="e").pack(anchor="e")
+
             self._adj_vars[key] = (val_var, dir_var)
 
     def _draw_diagram_idle(self):
@@ -1509,65 +1528,133 @@ class App(tk.Tk):
             w["card"].config(highlightbackground="#2a3f5f")
 
         self._info_var.set(f"LOT: {lot}  |  OPT ID: {opt_id}  →  Press PROCESSING to measure corner 1/4")
+        self._lock_inputs(True)
         self._update_analysis({"valid": False})
         self._refresh_ui()
 
-    def _do_measure(self):
-        if self._step >= 4:
-            return
+    def _do_measure(self, corner_name=None):
+        """Measure a corner. If corner_name is None, use current step."""
+        if corner_name is None:
+            if self._step >= 4:
+                return
+            corner_name = CORNER_ORDER[self._step]
+
         if self._cam_thread is None or not self._cam_thread.running:
             messagebox.showwarning("No Camera", "Camera not running.")
             return
 
-        corner_name = CORNER_ORDER[self._step]
         w = self._corner_widgets[corner_name]
         w["status_var"].set("Measuring...")
         w["status_lbl"].config(fg=ORANGE)
+        w["card"].config(highlightbackground=ORANGE)
         self.update_idletasks()
 
         # Capture + detect
         frame = self._cam_thread.get_frame()
         if frame is None:
-            messagebox.showwarning("No Frame", "No frame from camera.")
-            w["status_var"].set("Failed — no frame")
+            self._beep(fail=True)
+            w["status_var"].set("✗ No frame — click to retry")
             w["status_lbl"].config(fg=RED)
+            w["card"].config(highlightbackground=RED)
             return
 
         out_frame, results = detect_on_frame(frame, self.cfg)
         gaps = _get_circle_gaps(results)
+        has_data = any(v.get("um") is not None for v in gaps.values())
 
-        # Store
+        # ── Detection failed → block, do NOT advance step ──
+        if not has_data:
+            self._beep(fail=True)
+            for key, (var, lbl) in w["gap_vars"].items():
+                var.set("N/A")
+                lbl.config(fg=RED)
+            w["status_var"].set("✗ Not detected — click to retry")
+            w["status_lbl"].config(fg=RED)
+            w["card"].config(highlightbackground=RED)
+            return
+
+        # ── Detection OK ─────────────────────────────────
         self._corners_gaps[corner_name]   = gaps
         self._corners_frames[corner_name] = out_frame
 
-        # Update card
-        has_data = any(v["px"] is not None for v in gaps.values())
         for key, (var, lbl) in w["gap_vars"].items():
             entry = gaps.get(key, {})
-            px = entry.get("px")
             um = entry.get("um")
-            if px is None:
+            if um is None:
                 var.set("N/A")
                 lbl.config(fg=RED)
             else:
-                um_str = f"  ({um:.2f} µm)" if um is not None else ""
-                var.set(f"{px:+.2f} px{um_str}")
-                lbl.config(fg=GREEN if px >= 0 else ORANGE)
+                var.set(f"{um:+.2f} µm")
+                lbl.config(fg=GREEN if um >= 0 else ORANGE)
 
-        w["status_var"].set("✓ Done")
+        w["status_var"].set("✓ Done  (click to re-measure)")
         w["status_lbl"].config(fg=GREEN)
         w["card"].config(highlightbackground=CORNER_COLORS[corner_name])
+        w["hint_lbl"].config(text="🔁 re-measure")
 
-        self._step += 1
-        self._refresh_ui()
+        self._beep(fail=False)
+
+        # Advance step only if this was the current sequential step
+        if corner_name == CORNER_ORDER[self._step]:
+            self._step += 1
+            self._refresh_ui()
 
         if self._step == 4:
             self._finish_job()
-        else:
+        elif corner_name == CORNER_ORDER[self._step - 1] and self._step < 4:
             next_corner = CORNER_ORDER[self._step]
-            self._info_var.set(f"✓ {corner_name} done  →  Press PROCESSING for {next_corner}  ({self._step+1}/4)")
+            self._info_var.set(
+                f"✓ {corner_name} done  →  Press PROCESSING for {next_corner}  ({self._step + 1}/4)")
 
-    def _finish_job(self):
+    def _remeasure_corner(self, corner_name):
+        """Re-measure a specific corner (card click handler)."""
+        if not self._job_started:
+            return
+        if self._cam_thread is None or not self._cam_thread.running:
+            messagebox.showwarning("No Camera", "Camera not running.")
+            return
+        # Only allow re-measure on corners already attempted or current step
+        corner_idx = CORNER_ORDER.index(corner_name)
+        if corner_idx > self._step:
+            # Not reached yet — ignore click
+            return
+        self._do_measure(corner_name=corner_name)
+
+    @staticmethod
+    def _beep(fail=False):
+        """Cross-platform beep. fail=True → double beep."""
+        try:
+            import winsound
+            if fail:
+                winsound.Beep(400, 300)
+                time.sleep(0.1)
+                winsound.Beep(400, 300)
+            else:
+                winsound.Beep(880, 150)
+        except Exception:
+            try:
+                import subprocess
+                if fail:
+                    subprocess.Popen(["aplay", "-q", "/usr/share/sounds/alsa/Front_Left.wav"])
+                else:
+                    subprocess.Popen(["aplay", "-q", "/usr/share/sounds/alsa/Front_Right.wav"])
+            except Exception:
+                pass  # silent fallback
+
+    def _lock_inputs(self, locked: bool):
+        state = "disabled" if locked else "normal"
+        for widget in self.winfo_children():
+            self._set_entry_state(widget, state)
+
+    def _set_entry_state(self, widget, state):
+        """Recursively find Entry widgets and set their state."""
+        try:
+            if isinstance(widget, tk.Entry):
+                widget.config(state=state)
+        except Exception:
+            pass
+        for child in widget.winfo_children():
+            self._set_entry_state(child, state)
         ts      = datetime.now().strftime("%Y%m%d_%H%M%S")
         lot     = self._lot
         os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -1584,6 +1671,14 @@ class App(tk.Tk):
         self._info_var.set(f"✅  All 4 corners complete!  Saved → {lot}_{ts}.csv / .jpg")
 
     def _new_job(self):
+        # ── ถามยืนยันถ้ายังวัดไม่ครบ ──
+        if self._job_started and self._step < 4:
+            if not messagebox.askyesno(
+                "New Job",
+                f"Job is not complete ({self._step}/4 corners done).\nStart a new job anyway?",
+                icon="warning", parent=self):
+                return
+
         self._job_started = False
         self._step = 0
         self._lot = ""
@@ -1593,6 +1688,8 @@ class App(tk.Tk):
         self._corners_gaps   = {}
         self._corners_frames = {}
 
+        self._lock_inputs(False)
+
         for corner, w in self._corner_widgets.items():
             for key, (var, lbl) in w["gap_vars"].items():
                 var.set("—")
@@ -1600,6 +1697,7 @@ class App(tk.Tk):
             w["status_var"].set("Waiting...")
             w["status_lbl"].config(fg=FG_DIM)
             w["card"].config(highlightbackground="#2a3f5f")
+            w["hint_lbl"].config(text="")
 
         self._info_var.set("Enter LOT and OPT ID, then press PROCESSING")
         self._update_analysis({"valid": False})
